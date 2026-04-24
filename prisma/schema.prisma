@@ -1,0 +1,920 @@
+// ITSM Platform - Prisma Schema (Azure SQL / SQL Server)
+// Full ITIL 4 domain model. Single-tenant.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// IDENTITY, RBAC, AUDIT (cross-cutting)
+// ============================================================
+
+model User {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  entraOid     String?  @unique
+  email        String   @unique
+  displayName  String
+  givenName    String?
+  surname      String?
+  jobTitle     String?
+  department   String?
+  managerId    String?  @db.UniqueIdentifier
+  manager      User?    @relation("UserManager", fields: [managerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reports      User[]   @relation("UserManager")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships  GroupMembership[]
+  roles        UserRole[]
+
+  // back-relations
+  requestedIncidents  Incident[]        @relation("IncidentRequester")
+  assignedIncidents   Incident[]        @relation("IncidentAssignee")
+  requestedRequests   ServiceRequest[]  @relation("SRRequester")
+  assignedRequests    ServiceRequest[]  @relation("SRAssignee")
+  raisedProblems      Problem[]         @relation("ProblemRaisedBy")
+  assignedProblems    Problem[]         @relation("ProblemAssignee")
+  raisedChanges       ChangeRequest[]   @relation("ChangeRaisedBy")
+  ownedChanges        ChangeRequest[]   @relation("ChangeOwner")
+  raisedReleases      Release[]         @relation("ReleaseManager")
+  authoredArticles    KbArticle[]       @relation("KbAuthor")
+  approvals           Approval[]
+  worklogs            Worklog[]
+  notifications       Notification[]
+  auditEvents         AuditEvent[]
+  ownedAssets         Asset[]           @relation("AssetOwner")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  key         String   @unique // e.g. "agent", "approver", "admin"
+  name        String
+  description String?
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id          String @id @default(uuid()) @db.UniqueIdentifier
+  key         String @unique // e.g. "incident.read", "change.approve"
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String     @db.UniqueIdentifier
+  permissionId String     @db.UniqueIdentifier
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId String @db.UniqueIdentifier
+  roleId String @db.UniqueIdentifier
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@id([userId, roleId])
+}
+
+model Group {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  key         String   @unique
+  name        String
+  description String?
+  type        String   @default("support") // support | approver | business
+  isActive    Boolean  @default(true)
+  members     GroupMembership[]
+
+  assignedIncidents Incident[]       @relation("IncidentSupportGroup")
+  assignedRequests  ServiceRequest[] @relation("SRSupportGroup")
+  assignedProblems  Problem[]        @relation("ProblemSupportGroup")
+  assignedChanges   ChangeRequest[]  @relation("ChangeSupportGroup")
+}
+
+model GroupMembership {
+  userId  String @db.UniqueIdentifier
+  groupId String @db.UniqueIdentifier
+  isLead  Boolean @default(false)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  @@id([userId, groupId])
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  entityType String
+  entityId   String
+  action     String   // create | update | delete | status_change | approve | reject ...
+  actorId    String?  @db.UniqueIdentifier
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  before     String?  @db.NVarChar(Max) // JSON
+  after      String?  @db.NVarChar(Max) // JSON
+  metadata   String?  @db.NVarChar(Max) // JSON
+  occurredAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([occurredAt])
+}
+
+// ============================================================
+// SHARED TICKET PRIMITIVES
+// ============================================================
+
+model Attachment {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  entityType   String   // "incident" | "change" | "kb_article" | ...
+  entityId     String
+  fileName     String
+  contentType  String
+  sizeBytes    Int
+  blobPath     String
+  uploadedById String?  @db.UniqueIdentifier
+  uploadedAt   DateTime @default(now())
+  @@index([entityType, entityId])
+}
+
+model Worklog {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  entityType String
+  entityId   String
+  authorId   String?  @db.UniqueIdentifier
+  author     User?    @relation(fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  visibility String   @default("internal") // internal | public
+  body       String   @db.NVarChar(Max)
+  createdAt  DateTime @default(now())
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  recipientId String  @db.UniqueIdentifier
+  recipient  User     @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  channel    String   // email | inapp | webhook
+  subject    String
+  body       String   @db.NVarChar(Max)
+  entityType String?
+  entityId   String?
+  status     String   @default("queued") // queued | sent | failed | read
+  sentAt     DateTime?
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+  @@index([recipientId, status])
+}
+
+model Approval {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  entityType  String   // "change" | "service_request" | "release" | ...
+  entityId    String
+  stepNumber  Int
+  approverId  String?  @db.UniqueIdentifier
+  approver    User?    @relation(fields: [approverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  approverGroupId String? @db.UniqueIdentifier
+  status      String   @default("pending") // pending | approved | rejected | delegated | skipped
+  comment     String?  @db.NVarChar(Max)
+  decidedAt   DateTime?
+  dueAt       DateTime?
+  createdAt   DateTime @default(now())
+  @@index([entityType, entityId])
+  @@index([approverId, status])
+}
+
+// ============================================================
+// SLM (Service Level Management)
+// ============================================================
+
+model ServiceHours {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  name      String   @unique
+  timezone  String   @default("UTC")
+  // JSON: [{ day: 1, start: "09:00", end: "17:00" }, ...]
+  schedule  String   @db.NVarChar(Max)
+  holidays  Holiday[]
+  slas      Sla[]
+}
+
+model Holiday {
+  id              String       @id @default(uuid()) @db.UniqueIdentifier
+  serviceHoursId  String       @db.UniqueIdentifier
+  serviceHours    ServiceHours @relation(fields: [serviceHoursId], references: [id], onDelete: Cascade)
+  date            DateTime
+  name            String
+}
+
+model Sla {
+  id              String       @id @default(uuid()) @db.UniqueIdentifier
+  key             String       @unique
+  name            String
+  description     String?
+  type            String       // sla | ola | uc
+  priority        String?      // P1..P5
+  serviceHoursId  String?      @db.UniqueIdentifier
+  serviceHours    ServiceHours? @relation(fields: [serviceHoursId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  responseMins    Int?
+  resolveMins     Int?
+  isActive        Boolean      @default(true)
+  supplierId      String?      @db.UniqueIdentifier
+  supplier        Supplier?    @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  timers          SlaTimer[]
+}
+
+model SlaTimer {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  slaId       String   @db.UniqueIdentifier
+  sla         Sla      @relation(fields: [slaId], references: [id], onDelete: Cascade)
+  entityType  String   // incident | service_request | ...
+  entityId    String
+  metric      String   // response | resolve
+  startedAt   DateTime
+  pausedAt    DateTime?
+  pausedTotalSec Int   @default(0)
+  dueAt       DateTime
+  metAt       DateTime?
+  breached    Boolean  @default(false)
+  breachedAt  DateTime?
+  @@index([entityType, entityId])
+  @@index([dueAt, metAt])
+}
+
+// ============================================================
+// CMDB (Service Configuration Management)
+// ============================================================
+
+model CiType {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  key         String   @unique // server, app, service, db, network, location, ...
+  name        String
+  parentId    String?  @db.UniqueIdentifier
+  parent      CiType?  @relation("CiTypeParent", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children    CiType[] @relation("CiTypeParent")
+  attributesSchema String? @db.NVarChar(Max) // JSON Schema
+  cis         ConfigurationItem[]
+}
+
+model ConfigurationItem {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  refNo       String   @unique
+  ciTypeId    String   @db.UniqueIdentifier
+  ciType      CiType   @relation(fields: [ciTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name        String
+  status      String   @default("active") // active | retired | maintenance | planned
+  environment String?  // prod | uat | dev | dr
+  ownerGroupId String? @db.UniqueIdentifier
+  attributes  String?  @db.NVarChar(Max) // JSON
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  outgoingRels CiRelationship[] @relation("CiRelSource")
+  incomingRels CiRelationship[] @relation("CiRelTarget")
+  baselines    CiBaseline[]
+  asset        Asset?
+  outages      OutageRecord[]
+  events       EventRecord[]
+  capacityMetrics CapacityMetric[]
+  affectedIncidents IncidentCi[]
+  affectedChanges   ChangeCi[]
+  affectedProblems  ProblemCi[]
+  affectedReleases  ReleaseCi[]
+}
+
+model CiRelationship {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  sourceId  String   @db.UniqueIdentifier
+  targetId  String   @db.UniqueIdentifier
+  type      String   // depends_on | runs_on | hosted_on | part_of | connects_to ...
+  source    ConfigurationItem @relation("CiRelSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    ConfigurationItem @relation("CiRelTarget", fields: [targetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@unique([sourceId, targetId, type])
+}
+
+model CiBaseline {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  ciId      String   @db.UniqueIdentifier
+  ci        ConfigurationItem @relation(fields: [ciId], references: [id], onDelete: Cascade)
+  snapshot  String   @db.NVarChar(Max) // JSON
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// INCIDENT MANAGEMENT
+// ============================================================
+
+model Category {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  domain    String   // incident | service_request | problem | change | ...
+  key       String
+  name      String
+  parentId  String?  @db.UniqueIdentifier
+  parent    Category? @relation("CategoryParent", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children  Category[] @relation("CategoryParent")
+  @@unique([domain, key])
+}
+
+model Incident {
+  id              String   @id @default(uuid()) @db.UniqueIdentifier
+  refNo           String   @unique
+  title           String
+  description     String   @db.NVarChar(Max)
+  status          String   @default("new") // new | assigned | in_progress | pending | resolved | closed | cancelled
+  priority        String   @default("P3") // P1..P5
+  urgency         String   @default("medium") // low | medium | high | critical
+  impact          String   @default("medium")
+  source          String   @default("portal") // portal | email | phone | event | api
+  isMajor         Boolean  @default(false)
+  categoryId      String?  @db.UniqueIdentifier
+  requesterId     String   @db.UniqueIdentifier
+  requester       User     @relation("IncidentRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assigneeId      String?  @db.UniqueIdentifier
+  assignee        User?    @relation("IncidentAssignee", fields: [assigneeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supportGroupId  String?  @db.UniqueIdentifier
+  supportGroup    Group?   @relation("IncidentSupportGroup", fields: [supportGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  problemId       String?  @db.UniqueIdentifier
+  problem         Problem? @relation(fields: [problemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  resolution      String?  @db.NVarChar(Max)
+  resolutionCode  String?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  affectedCis     IncidentCi[]
+  triggerEventId  String?  @db.UniqueIdentifier
+
+  @@index([status])
+  @@index([assigneeId])
+  @@index([supportGroupId])
+}
+
+model IncidentCi {
+  incidentId String @db.UniqueIdentifier
+  ciId       String @db.UniqueIdentifier
+  incident   Incident          @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  ci         ConfigurationItem @relation(fields: [ciId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@id([incidentId, ciId])
+}
+
+// ============================================================
+// SERVICE REQUEST + CATALOG
+// ============================================================
+
+model ServiceCatalogCategory {
+  id       String   @id @default(uuid()) @db.UniqueIdentifier
+  key      String   @unique
+  name     String
+  parentId String?  @db.UniqueIdentifier
+  parent   ServiceCatalogCategory? @relation("ScCatParent", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children ServiceCatalogCategory[] @relation("ScCatParent")
+  items    CatalogItem[]
+}
+
+model CatalogItem {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  key          String   @unique
+  name         String
+  description  String?  @db.NVarChar(Max)
+  categoryId   String   @db.UniqueIdentifier
+  category     ServiceCatalogCategory @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive     Boolean  @default(true)
+  formSchema   String?  @db.NVarChar(Max) // JSON Schema for the request form
+  approvalSchema String? @db.NVarChar(Max) // JSON describing approval chain
+  fulfilmentSchema String? @db.NVarChar(Max) // JSON describing fulfilment tasks
+  estCostCents Int?
+  estDeliveryDays Int?
+  requests     ServiceRequest[]
+}
+
+model ServiceRequest {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  refNo          String   @unique
+  title          String
+  status         String   @default("new") // new | approval_pending | approved | rejected | fulfilment | resolved | closed | cancelled
+  priority       String   @default("P3")
+  catalogItemId  String?  @db.UniqueIdentifier
+  catalogItem    CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  formData       String?  @db.NVarChar(Max) // JSON
+  requesterId    String   @db.UniqueIdentifier
+  requester      User     @relation("SRRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assigneeId     String?  @db.UniqueIdentifier
+  assignee       User?    @relation("SRAssignee", fields: [assigneeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supportGroupId String?  @db.UniqueIdentifier
+  supportGroup   Group?   @relation("SRSupportGroup", fields: [supportGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  resolvedAt     DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  tasks          FulfilmentTask[]
+}
+
+model FulfilmentTask {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  requestId   String   @db.UniqueIdentifier
+  request     ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  sequence    Int
+  title       String
+  description String?  @db.NVarChar(Max)
+  status      String   @default("pending") // pending | in_progress | done | skipped
+  assigneeId  String?  @db.UniqueIdentifier
+  groupId     String?  @db.UniqueIdentifier
+  completedAt DateTime?
+}
+
+// ============================================================
+// PROBLEM MANAGEMENT
+// ============================================================
+
+model Problem {
+  id            String   @id @default(uuid()) @db.UniqueIdentifier
+  refNo         String   @unique
+  title         String
+  description   String   @db.NVarChar(Max)
+  status        String   @default("new") // new | investigation | known_error | resolved | closed
+  priority      String   @default("P3")
+  raisedById    String   @db.UniqueIdentifier
+  raisedBy      User     @relation("ProblemRaisedBy", fields: [raisedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assigneeId    String?  @db.UniqueIdentifier
+  assignee      User?    @relation("ProblemAssignee", fields: [assigneeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supportGroupId String? @db.UniqueIdentifier
+  supportGroup  Group?   @relation("ProblemSupportGroup", fields: [supportGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rootCause     String?  @db.NVarChar(Max)
+  workaround    String?  @db.NVarChar(Max)
+  resolution    String?  @db.NVarChar(Max)
+  resolvedAt    DateTime?
+  closedAt      DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  incidents     Incident[]
+  knownError    KnownError?
+  affectedCis   ProblemCi[]
+}
+
+model ProblemCi {
+  problemId String @db.UniqueIdentifier
+  ciId      String @db.UniqueIdentifier
+  problem   Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  ci        ConfigurationItem @relation(fields: [ciId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@id([problemId, ciId])
+}
+
+model KnownError {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  problemId  String   @unique @db.UniqueIdentifier
+  problem    Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  symptoms   String   @db.NVarChar(Max)
+  cause      String   @db.NVarChar(Max)
+  workaround String   @db.NVarChar(Max)
+  publishedAt DateTime?
+}
+
+// ============================================================
+// CHANGE ENABLEMENT
+// ============================================================
+
+model ChangeRequest {
+  id              String   @id @default(uuid()) @db.UniqueIdentifier
+  refNo           String   @unique
+  title           String
+  description     String   @db.NVarChar(Max)
+  changeType      String   @default("normal") // standard | normal | emergency
+  status          String   @default("draft") // draft | assess | cab_review | approved | scheduled | implementation | review | closed | rejected | cancelled
+  priority        String   @default("P3")
+  riskScore       Int      @default(0) // 0..100
+  riskLevel       String   @default("low") // low | medium | high
+  raisedById      String   @db.UniqueIdentifier
+  raisedBy        User     @relation("ChangeRaisedBy", fields: [raisedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ownerId         String?  @db.UniqueIdentifier
+  owner           User?    @relation("ChangeOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supportGroupId  String?  @db.UniqueIdentifier
+  supportGroup    Group?   @relation("ChangeSupportGroup", fields: [supportGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  plannedStart    DateTime?
+  plannedEnd      DateTime?
+  actualStart     DateTime?
+  actualEnd       DateTime?
+  implementationPlan String? @db.NVarChar(Max)
+  rollbackPlan    String?  @db.NVarChar(Max)
+  testPlan        String?  @db.NVarChar(Max)
+  postReview      String?  @db.NVarChar(Max)
+  releaseId       String?  @db.UniqueIdentifier
+  release         Release? @relation(fields: [releaseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  affectedCis     ChangeCi[]
+}
+
+model ChangeCi {
+  changeId String @db.UniqueIdentifier
+  ciId     String @db.UniqueIdentifier
+  change   ChangeRequest @relation(fields: [changeId], references: [id], onDelete: Cascade)
+  ci       ConfigurationItem @relation(fields: [ciId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@id([changeId, ciId])
+}
+
+model FreezeWindow {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  name      String
+  startsAt  DateTime
+  endsAt    DateTime
+  scope     String?  @db.NVarChar(Max) // JSON: services/CIs/environments affected
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// RELEASE & DEPLOYMENT
+// ============================================================
+
+model Release {
+  id            String   @id @default(uuid()) @db.UniqueIdentifier
+  refNo         String   @unique
+  name          String
+  description   String?  @db.NVarChar(Max)
+  type          String   @default("minor") // major | minor | patch | emergency
+  status        String   @default("planning") // planning | build | uat | deploy | review | closed | cancelled
+  managerId     String?  @db.UniqueIdentifier
+  manager       User?    @relation("ReleaseManager", fields: [managerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  plannedAt     DateTime?
+  releasedAt    DateTime?
+  releasePlan   String?  @db.NVarChar(Max)
+  deploymentPlan String? @db.NVarChar(Max)
+  rollbackPlan  String?  @db.NVarChar(Max)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  changes       ChangeRequest[]
+  tasks         ReleaseTask[]
+  affectedCis   ReleaseCi[]
+}
+
+model ReleaseTask {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  releaseId  String   @db.UniqueIdentifier
+  release    Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  sequence   Int
+  title      String
+  description String? @db.NVarChar(Max)
+  status     String   @default("pending")
+  assigneeId String?  @db.UniqueIdentifier
+  dueAt      DateTime?
+  completedAt DateTime?
+}
+
+model ReleaseCi {
+  releaseId String @db.UniqueIdentifier
+  ciId      String @db.UniqueIdentifier
+  release   Release @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  ci        ConfigurationItem @relation(fields: [ciId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@id([releaseId, ciId])
+}
+
+// ============================================================
+// KNOWLEDGE MANAGEMENT
+// ============================================================
+
+model KbArticle {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  refNo       String   @unique
+  title       String
+  status      String   @default("draft") // draft | review | published | retired
+  authorId    String?  @db.UniqueIdentifier
+  author      User?    @relation("KbAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  category    String?
+  tags        String?  @db.NVarChar(Max) // JSON array
+  body        String   @db.NVarChar(Max) // markdown
+  publishedAt DateTime?
+  reviewDueAt DateTime?
+  views       Int      @default(0)
+  helpful     Int      @default(0)
+  notHelpful  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  versions    KbArticleVersion[]
+  feedback    KbFeedback[]
+}
+
+model KbArticleVersion {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  articleId  String   @db.UniqueIdentifier
+  article    KbArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  version    Int
+  title      String
+  body       String   @db.NVarChar(Max)
+  createdById String? @db.UniqueIdentifier
+  createdAt  DateTime @default(now())
+  @@unique([articleId, version])
+}
+
+model KbFeedback {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  articleId  String   @db.UniqueIdentifier
+  article    KbArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId     String?  @db.UniqueIdentifier
+  helpful    Boolean
+  comment    String?  @db.NVarChar(Max)
+  createdAt  DateTime @default(now())
+}
+
+// ============================================================
+// EVENT MANAGEMENT
+// ============================================================
+
+model EventSource {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  key       String   @unique
+  name      String
+  type      String   // monitoring | log | webhook | api
+  isActive  Boolean  @default(true)
+  events    EventRecord[]
+  rules     EventRule[]
+}
+
+model EventRecord {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  sourceId     String   @db.UniqueIdentifier
+  source       EventSource @relation(fields: [sourceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  externalId   String?
+  severity     String   @default("info") // info | warning | minor | major | critical
+  status       String   @default("open") // open | acknowledged | suppressed | closed
+  message      String   @db.NVarChar(Max)
+  payload      String?  @db.NVarChar(Max) // JSON
+  ciId         String?  @db.UniqueIdentifier
+  ci           ConfigurationItem? @relation(fields: [ciId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  correlationKey String?
+  incidentId   String?  @db.UniqueIdentifier
+  occurredAt   DateTime @default(now())
+  acknowledgedAt DateTime?
+  closedAt     DateTime?
+  @@index([severity, status])
+  @@index([correlationKey])
+}
+
+model EventRule {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  sourceId  String?  @db.UniqueIdentifier
+  source    EventSource? @relation(fields: [sourceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name      String
+  // JSON rule: when conditions match -> action (create_incident | suppress | correlate | notify)
+  matchExpr String   @db.NVarChar(Max)
+  action    String
+  isActive  Boolean  @default(true)
+  priority  Int      @default(100)
+}
+
+// ============================================================
+// AVAILABILITY MGMT
+// ============================================================
+
+model AvailabilityPlan {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  serviceKey String  @unique
+  name      String
+  targetPct Float    // e.g. 99.9
+  windowDays Int     @default(30)
+  notes     String?  @db.NVarChar(Max)
+}
+
+model OutageRecord {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  ciId      String?  @db.UniqueIdentifier
+  ci        ConfigurationItem? @relation(fields: [ciId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  serviceKey String?
+  startedAt DateTime
+  endedAt   DateTime?
+  type      String   @default("unplanned") // planned | unplanned
+  reason    String?  @db.NVarChar(Max)
+  incidentId String? @db.UniqueIdentifier
+}
+
+// ============================================================
+// CAPACITY MGMT
+// ============================================================
+
+model CapacityPlan {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  serviceKey String  @unique
+  name      String
+  notes     String?  @db.NVarChar(Max)
+  thresholds CapacityThreshold[]
+}
+
+model CapacityMetric {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  ciId      String   @db.UniqueIdentifier
+  ci        ConfigurationItem @relation(fields: [ciId], references: [id], onDelete: Cascade)
+  metric    String   // cpu | memory | disk | requests_per_sec ...
+  value     Float
+  unit      String?
+  capturedAt DateTime @default(now())
+  @@index([ciId, metric, capturedAt])
+}
+
+model CapacityThreshold {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  planId    String   @db.UniqueIdentifier
+  plan      CapacityPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  metric    String
+  warnAt    Float
+  critAt    Float
+}
+
+// ============================================================
+// SERVICE CONTINUITY MGMT
+// ============================================================
+
+model ContinuityPlan {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  serviceKey  String   @unique
+  name        String
+  rtoMinutes  Int
+  rpoMinutes  Int
+  strategy    String?  @db.NVarChar(Max)
+  lastTestedAt DateTime?
+  tests       DrTest[]
+}
+
+model DrTest {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  planId    String   @db.UniqueIdentifier
+  plan      ContinuityPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  scheduledAt DateTime
+  executedAt  DateTime?
+  result      String?  // pass | fail | partial
+  notes       String?  @db.NVarChar(Max)
+}
+
+// ============================================================
+// SUPPLIER MGMT
+// ============================================================
+
+model Supplier {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  key       String   @unique
+  name      String
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  isActive  Boolean  @default(true)
+  contracts Contract[]
+  ucs       Sla[]
+}
+
+model Contract {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  supplierId  String   @db.UniqueIdentifier
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  refNo       String   @unique
+  name        String
+  startsAt    DateTime
+  endsAt      DateTime
+  valueCents  Int?
+  currency    String   @default("USD")
+  status      String   @default("active") // active | expired | terminated
+  obligations ContractObligation[]
+  reviews     SupplierReview[]
+  assets      Asset[]
+}
+
+model ContractObligation {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  contractId String   @db.UniqueIdentifier
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  description String  @db.NVarChar(Max)
+  dueAt      DateTime?
+  status     String   @default("open") // open | met | breached | waived
+}
+
+model SupplierReview {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  contractId String   @db.UniqueIdentifier
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  reviewedAt DateTime
+  score      Int      // 1..5
+  notes      String?  @db.NVarChar(Max)
+}
+
+// ============================================================
+// ASSET MGMT
+// ============================================================
+
+model Asset {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  refNo        String   @unique
+  name         String
+  type         String   // hardware | software | license | virtual | mobile | network
+  status       String   @default("in_stock") // in_stock | in_use | maintenance | retired | lost
+  serialNumber String?
+  model        String?
+  vendor       String?
+  ownerId      String?  @db.UniqueIdentifier
+  owner        User?    @relation("AssetOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ciId         String?  @unique @db.UniqueIdentifier
+  ci           ConfigurationItem? @relation(fields: [ciId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  contractId   String?  @db.UniqueIdentifier
+  contract     Contract? @relation(fields: [contractId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchaseDate DateTime?
+  warrantyEnd  DateTime?
+  costCents    Int?
+  currency     String   @default("USD")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lifecycleEvents AssetLifecycleEvent[]
+  licenses     SoftwareLicense[]
+}
+
+model AssetLifecycleEvent {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  assetId   String   @db.UniqueIdentifier
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  type      String   // received | assigned | returned | repaired | retired | lost ...
+  notes     String?  @db.NVarChar(Max)
+  occurredAt DateTime @default(now())
+  actorId   String?  @db.UniqueIdentifier
+}
+
+model SoftwareLicense {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  assetId   String?  @db.UniqueIdentifier
+  asset     Asset?   @relation(fields: [assetId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product   String
+  vendor    String?
+  licenseKey String?
+  seats     Int      @default(1)
+  seatsUsed Int      @default(0)
+  expiresAt DateTime?
+}
+
+// ============================================================
+// SERVICE FINANCIAL MGMT (light)
+// ============================================================
+
+model CostCenter {
+  id     String @id @default(uuid()) @db.UniqueIdentifier
+  key    String @unique
+  name   String
+  budgets Budget[]
+  charges Charge[]
+}
+
+model CostModel {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  key       String   @unique
+  name      String
+  // JSON formula: e.g. per-incident rate, per-CI rate
+  formula   String   @db.NVarChar(Max)
+}
+
+model Budget {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  costCenterId String   @db.UniqueIdentifier
+  costCenter   CostCenter @relation(fields: [costCenterId], references: [id], onDelete: Cascade)
+  fiscalYear   Int
+  amountCents  Int
+  currency     String   @default("USD")
+  @@unique([costCenterId, fiscalYear])
+}
+
+model Charge {
+  id           String   @id @default(uuid()) @db.UniqueIdentifier
+  costCenterId String   @db.UniqueIdentifier
+  costCenter   CostCenter @relation(fields: [costCenterId], references: [id], onDelete: Cascade)
+  description  String
+  amountCents  Int
+  currency     String   @default("USD")
+  entityType   String?
+  entityId     String?
+  occurredAt   DateTime @default(now())
+}
+
+// ============================================================
+// DASHBOARDS / SAVED VIEWS / NOTIFICATION TEMPLATES
+// ============================================================
+
+model SavedView {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  ownerId   String?  @db.UniqueIdentifier
+  module    String   // incident | change | ...
+  name      String
+  isShared  Boolean  @default(false)
+  filter    String   @db.NVarChar(Max) // JSON
+  columns   String?  @db.NVarChar(Max) // JSON
+  sort      String?  @db.NVarChar(Max) // JSON
+  createdAt DateTime @default(now())
+}
+
+model NotificationTemplate {
+  id        String   @id @default(uuid()) @db.UniqueIdentifier
+  key       String   @unique
+  channel   String   // email | inapp | webhook
+  subject   String
+  body      String   @db.NVarChar(Max) // handlebars-like
+  isActive  Boolean  @default(true)
+}
+
+model Counter {
+  key   String @id // "INC", "SR", "PRB", "CHG", "REL", "KB", "ASSET", "CI", "CONTRACT"
+  value Int    @default(0)
+}

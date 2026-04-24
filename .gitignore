@@ -1,0 +1,17 @@
+node_modules
+dist
+build
+coverage
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vite
+.tsbuildinfo
+.pnpm-store
+.idea
+.vscode
+prisma/.env
+playwright-report
+test-results

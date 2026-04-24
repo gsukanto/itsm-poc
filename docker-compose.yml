@@ -1,0 +1,32 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: itsm-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "YourStrong!Passw0rd"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: itsm-azurite
+    command: "azurite-blob --blobHost 0.0.0.0 --location /data --skipApiVersionCheck"
+    ports:
+      - "10000:10000"
+    volumes:
+      - azuritedata:/data
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: itsm-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  sqldata:
+  azuritedata:
