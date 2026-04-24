@@ -50,6 +50,12 @@ pnpm dev                        # start api, worker, web in parallel
 
 > **Security note:** `.env.example` ships placeholder dev secrets (e.g. `JWT_DEV_SECRET=dev-only-change-me`). They exist purely to make local boot frictionless — **never reuse them in any deployed environment**. For real deployments, configure Microsoft Entra ID and store secrets in Key Vault.
 
+## Demo videos
+Auto-generated walkthroughs of every module live in [`e2e/videos/`](./e2e/videos/). To regenerate:
+```bash
+pnpm record:videos     # see e2e/README.md for prerequisites
+```
+
 ## CI
 GitHub Actions runs lint, test, build on every PR. `infra/` Bicep is what-if'd on PR and deployed on push to `main` (when secrets configured).
 
