@@ -117,8 +117,11 @@ function BoardView({
   return (
     <Box>
       {error && <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 1 }}>{error}</Alert>}
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        Drag cards between columns to change status. Dropping into a column marked <b>approval</b> creates an approval request.
+      </Typography>
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        <Box sx={{ display: 'flex', gap: 1.5, overflowX: 'auto', pb: 1, height: 'calc(100vh - 240px)' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, overflowX: 'auto', pb: 1, minHeight: 'calc(100vh - 220px)', alignItems: 'stretch' }}>
           {wf.states.map((s: any) => (
             <Column key={s.id} state={s} items={grouped[s.key] ?? []} linkTo={linkTo} cardRender={cardRender} />
           ))}
@@ -163,9 +166,11 @@ function Column({
       ref={droppable ? setNodeRef : undefined}
       sx={{
         minWidth: 280, maxWidth: 320, flex: '0 0 290px',
-        bgcolor: isOver ? 'action.hover' : 'background.paper',
+        bgcolor: isOver ? 'action.selected' : 'background.default',
+        outline: isOver ? '2px dashed' : 'none',
+        outlineColor: 'primary.main',
         border: 1, borderColor: 'divider', borderRadius: 1, p: 1,
-        display: 'flex', flexDirection: 'column', height: '100%',
+        display: 'flex', flexDirection: 'column', minHeight: 480,
       }}
     >
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
@@ -177,7 +182,12 @@ function Column({
         </Stack>
         <Chip size="small" label={items.length} />
       </Stack>
-      <Box sx={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Box sx={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 1, minHeight: 200 }}>
+        {items.length === 0 && (
+          <Typography variant="caption" color="text.disabled" sx={{ textAlign: 'center', mt: 4, fontStyle: 'italic' }}>
+            {droppable ? 'Drop here' : 'No items'}
+          </Typography>
+        )}
         {items.map((r) => (
           <DraggableCard key={r.id} row={r} linkTo={linkTo} cardRender={cardRender} />
         ))}
@@ -189,28 +199,48 @@ function Column({
 function DraggableCard({ row, linkTo, cardRender }: { row: any; linkTo: (r: any) => string; cardRender?: (r: any) => React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: row.id, data: { row } });
   const nav = useNavigate();
+  const title = row.title ?? row.name ?? row.subject ?? row.message ?? '—';
+  const ref = row.refNo ?? row.key ?? (row.id ? String(row.id).slice(0, 8) : '');
   const style: React.CSSProperties = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    opacity: isDragging ? 0.6 : 1,
-    cursor: 'grab',
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 100 : 'auto',
   };
   return (
     <Card
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
-      onClick={(e) => {
-        if (isDragging) return;
-        // small click: navigate; drag is captured by dnd-kit via activation distance
-        e.stopPropagation();
-        nav(linkTo(row));
-      }}
       variant="outlined"
-      sx={{ '&:hover': { borderColor: 'primary.main' } }}
+      sx={{ '&:hover': { borderColor: 'primary.main', boxShadow: 1 } }}
     >
-      <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
-        {cardRender ? cardRender(row) : <DefaultCardBody row={row} />}
+      <Box
+        {...attributes}
+        {...listeners}
+        sx={{
+          display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.25,
+          cursor: 'grab', '&:active': { cursor: 'grabbing' },
+          bgcolor: 'action.hover', borderBottom: 1, borderColor: 'divider',
+          fontSize: 11, color: 'text.secondary', userSelect: 'none',
+        }}
+        title="Drag to move"
+      >
+        <span style={{ letterSpacing: 1 }}>⋮⋮</span>
+        <Typography variant="caption" sx={{ fontWeight: 600 }}>{ref}</Typography>
+      </Box>
+      <CardContent
+        onClick={() => { if (!isDragging) nav(linkTo(row)); }}
+        sx={{ p: 1.25, '&:last-child': { pb: 1.25 }, cursor: 'pointer' }}
+      >
+        {cardRender ? cardRender(row) : (
+          <Stack spacing={0.5}>
+            <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>{title}</Typography>
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+              {row.priority && <Chip size="small" label={row.priority} />}
+              {row.severity && <Chip size="small" label={row.severity} />}
+              {row.assignee?.displayName && <Chip size="small" variant="outlined" label={row.assignee.displayName} />}
+            </Stack>
+          </Stack>
+        )}
       </CardContent>
     </Card>
   );

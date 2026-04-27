@@ -6,7 +6,7 @@
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const TARGET = 100;
+const TARGET = 150;
 const log = (...a: any[]) => console.log('[bulk-seed]', ...a);
 
 const pick = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
