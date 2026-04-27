@@ -2,6 +2,7 @@ import React from 'react';
 import { GridColDef } from '@mui/x-data-grid';
 import { useEventsQuery } from '../../services/api';
 import { ListGrid, PageHeader } from '../../components/PageBits';
+import { ModuleViews } from '../../components/ModuleViews';
 import { StatusChip } from '../../components/StatusChip';
 
 export function EventList() {
@@ -17,7 +18,7 @@ export function EventList() {
   return (
     <>
       <PageHeader title="Events" />
-      <ListGrid rows={data} columns={cols} loading={isFetching} linkTo={(r) => `/events/${r.id}`} />
+      <ModuleViews module="event" rows={data as any[]} columns={cols} loading={isFetching} linkTo={(r) => `/events/${r.id}`} />
     </>
   );
 }

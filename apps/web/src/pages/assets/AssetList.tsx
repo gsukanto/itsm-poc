@@ -3,6 +3,7 @@ import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, St
 import { GridColDef } from '@mui/x-data-grid';
 import { useAssetsQuery, useCreateAssetMutation } from '../../services/api';
 import { ListGrid, PageHeader } from '../../components/PageBits';
+import { ModuleViews } from '../../components/ModuleViews';
 import { StatusChip } from '../../components/StatusChip';
 
 export function AssetList() {
@@ -21,7 +22,7 @@ export function AssetList() {
   return (
     <>
       <PageHeader title="Assets" action={<Button variant="contained" onClick={() => setOpen(true)}>New Asset</Button>} />
-      <ListGrid rows={data} columns={cols} loading={isFetching} linkTo={(r) => `/assets/${r.id}`} />
+      <ModuleViews module="asset" rows={data as any[]} columns={cols} loading={isFetching} linkTo={(r) => `/assets/${r.id}`} />
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>New Asset</DialogTitle>
         <DialogContent>

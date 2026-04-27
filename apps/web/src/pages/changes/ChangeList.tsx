@@ -4,6 +4,7 @@ import { Button } from '@mui/material';
 import { GridColDef } from '@mui/x-data-grid';
 import { useChangesQuery } from '../../services/api';
 import { ListGrid, PageHeader } from '../../components/PageBits';
+import { ModuleViews } from '../../components/ModuleViews';
 import { StatusChip } from '../../components/StatusChip';
 
 export function ChangeList() {
@@ -21,7 +22,7 @@ export function ChangeList() {
   return (
     <>
       <PageHeader title="Changes" action={<Button component={Link} to="/changes/new" variant="contained">New Change</Button>} />
-      <ListGrid rows={rows} columns={cols} loading={isFetching} linkTo={(r) => `/changes/${r.id}`} />
+      <ModuleViews module="change" rows={rows} columns={cols} loading={isFetching} linkTo={(r) => `/changes/${r.id}`} />
     </>
   );
 }

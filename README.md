@@ -18,6 +18,12 @@ A self-hosted IT Service Management platform inspired by BMC Helix ITSM (Remedy)
 ## Modules (full ITIL 4)
 Incident · Service Request + Catalog · Problem · Change Enablement · CMDB · Knowledge · SLM · Event · Availability · Capacity · Release & Deployment · Asset · Service Continuity · Supplier · Service Financial (light)
 
+## Multi-view UI + customizable workflows + approval gate
+- Every stateful module supports **List / Board (swimlane by status) / Cards** view modes (toggle in the top-right; preference saved per module).
+- The board uses drag-and-drop to move items between states. Allowed transitions are enforced by the backend.
+- Workflows are stored in the DB (`Workflow`, `WorkflowState`, `WorkflowTransition` models) and editable from `/admin/workflows`.
+- Each workflow's terminal state is gated: dragging into it creates a pending `Approval` instead of changing status. Once approved (Approvals page), the record auto-moves into the terminal state.
+
 ## Repo layout
 ```
 apps/

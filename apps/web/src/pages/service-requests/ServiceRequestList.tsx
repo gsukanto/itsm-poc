@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { GridColDef } from '@mui/x-data-grid';
 import { useServiceRequestsQuery } from '../../services/api';
 import { ListGrid, PageHeader } from '../../components/PageBits';
+import { ModuleViews } from '../../components/ModuleViews';
 import { StatusChip } from '../../components/StatusChip';
 import { Button } from '@mui/material';
 
@@ -19,7 +20,7 @@ export function ServiceRequestList() {
   return (
     <>
       <PageHeader title="Service Requests" action={<Button component={Link} to="/catalog" variant="contained">Browse Catalog</Button>} />
-      <ListGrid rows={rows} columns={cols} loading={isFetching} linkTo={(r) => `/service-requests/${r.id}`} />
+      <ModuleViews module="service_request" rows={rows} columns={cols} loading={isFetching} linkTo={(r) => `/service-requests/${r.id}`} />
     </>
   );
 }

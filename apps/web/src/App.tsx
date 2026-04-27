@@ -34,6 +34,8 @@ import { SupplierList } from './pages/suppliers/SupplierList';
 import { SupplierDetail } from './pages/suppliers/SupplierDetail';
 import { FinancialPage } from './pages/financial/FinancialPage';
 import { Approvals } from './pages/Approvals';
+import { WorkflowList } from './pages/admin/WorkflowList';
+import { WorkflowEdit } from './pages/admin/WorkflowEdit';
 import { LoginPage } from './pages/LoginPage';
 import { EventDetail } from './pages/events/EventDetail';
 import { SlaDetail } from './pages/slm/SlaDetail';
@@ -82,6 +84,8 @@ export function App() {
         <Route path="/suppliers/:id" element={<SupplierDetail />} />
         <Route path="/financial" element={<FinancialPage />} />
         <Route path="/approvals" element={<Approvals />} />
+        <Route path="/admin/workflows" element={<WorkflowList />} />
+        <Route path="/admin/workflows/:module" element={<WorkflowEdit />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

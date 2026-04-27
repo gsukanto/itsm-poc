@@ -183,8 +183,57 @@ model Approval {
   decidedAt   DateTime?
   dueAt       DateTime?
   createdAt   DateTime @default(now())
+  // JSON metadata, e.g. { "pendingTransition": { "module": "incident", "recordId": "...", "toStatus": "resolved" } }
+  metadata    String?  @db.NVarChar(Max)
   @@index([entityType, entityId])
   @@index([approverId, status])
+}
+
+// ============================================================
+// Workflow engine (configurable per module)
+// ============================================================
+
+model Workflow {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  module      String   @unique // "incident" | "service_request" | "problem" | ...
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  states      WorkflowState[]
+  transitions WorkflowTransition[]
+}
+
+model WorkflowState {
+  id                String   @id @default(uuid()) @db.UniqueIdentifier
+  workflowId        String   @db.UniqueIdentifier
+  workflow          Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  key               String   // e.g. "new", "in_progress", "resolved"
+  label             String
+  color             String   @default("#9e9e9e")
+  order             Int      @default(0)
+  isInitial         Boolean  @default(false)
+  isTerminal        Boolean  @default(false)
+  requiresApproval  Boolean  @default(false)
+  approverRoleKey   String?
+  approverGroupKey  String?
+  fromTransitions   WorkflowTransition[] @relation("FromState")
+  toTransitions     WorkflowTransition[] @relation("ToState")
+  @@unique([workflowId, key])
+  @@index([workflowId, order])
+}
+
+model WorkflowTransition {
+  id           String        @id @default(uuid()) @db.UniqueIdentifier
+  workflowId   String        @db.UniqueIdentifier
+  workflow     Workflow      @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  fromStateId  String        @db.UniqueIdentifier
+  fromState    WorkflowState @relation("FromState", fields: [fromStateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  toStateId    String        @db.UniqueIdentifier
+  toState      WorkflowState @relation("ToState", fields: [toStateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  label        String?
+  @@unique([workflowId, fromStateId, toStateId])
 }
 
 // ============================================================

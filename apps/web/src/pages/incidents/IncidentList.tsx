@@ -4,6 +4,7 @@ import { Stack, MenuItem, TextField } from '@mui/material';
 import { GridColDef } from '@mui/x-data-grid';
 import { useIncidentsQuery } from '../../services/api';
 import { ListGrid, NewButton, PageHeader, SearchBox } from '../../components/PageBits';
+import { ModuleViews } from '../../components/ModuleViews';
 import { StatusChip } from '../../components/StatusChip';
 
 export function IncidentList() {
@@ -36,7 +37,7 @@ export function IncidentList() {
           {['P1','P2','P3','P4','P5'].map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
         </TextField>
       </Stack>
-      <ListGrid rows={rows} columns={cols} loading={isFetching} linkTo={(r) => `/incidents/${r.id}`} />
+      <ModuleViews module="incident" rows={rows} columns={cols} loading={isFetching} linkTo={(r) => `/incidents/${r.id}`} />
     </>
   );
 }

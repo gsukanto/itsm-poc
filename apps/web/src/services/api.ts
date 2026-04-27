@@ -20,6 +20,7 @@ export const api = createApi({
     'Incident', 'ServiceRequest', 'CatalogItem', 'Problem', 'Change', 'CI', 'CIType',
     'KbArticle', 'Sla', 'Event', 'Availability', 'Capacity', 'Release', 'Asset',
     'Continuity', 'Supplier', 'Financial', 'Notification', 'Approval', 'User', 'Group', 'Role',
+    'Workflow',
   ],
   endpoints: (b) => ({
     me: b.query<any, void>({ query: () => '/users/me' }),
@@ -103,6 +104,24 @@ export const api = createApi({
 
     chargeback: b.query<any[], string>({ query: (fy) => `/financial/chargeback/${fy}` }),
     costCenters: b.query<any[], void>({ query: () => '/financial/cost-centers', providesTags: ['Financial'] }),
+
+    workflows: b.query<any[], void>({ query: () => '/workflows', providesTags: ['Workflow' as any] }),
+    workflow: b.query<any, string>({ query: (m) => `/workflows/${m}`, providesTags: (_r, _e, m) => [{ type: 'Workflow' as any, id: m }] }),
+    updateWorkflow: b.mutation<any, { module: string; body: any }>({
+      query: ({ module, body }) => ({ url: `/workflows/${module}`, method: 'PUT', body }),
+      invalidatesTags: ['Workflow' as any],
+    }),
+    transition: b.mutation<any, { module: string; id: string; toStatus: string }>({
+      query: ({ module, id, toStatus }) => ({ url: `/workflows/${module}/${id}/transition`, method: 'POST', body: { toStatus } }),
+      invalidatesTags: (_r, _e, { module }) => {
+        const map: Record<string, any> = { incident: 'Incident', service_request: 'ServiceRequest', problem: 'Problem', change: 'Change', release: 'Release', knowledge: 'KbArticle', event: 'Event', asset: 'Asset', contract: 'Supplier', fulfilment_task: 'ServiceRequest' };
+        return ['Approval', map[module]].filter(Boolean);
+      },
+    }),
+    pendingApprovalsForRecord: b.query<any[], { module: string; id: string }>({
+      query: ({ module, id }) => `/workflows/${module}/${id}/pending-approvals`,
+      providesTags: ['Approval'],
+    }),
   }),
 });
 
@@ -127,4 +146,6 @@ export const {
   useAssetsQuery, useAssetQuery, useCreateAssetMutation,
   useContinuityPlansQuery, useSuppliersQuery, useSupplierQuery,
   useChargebackQuery, useCostCentersQuery,
+  useWorkflowsQuery, useWorkflowQuery, useUpdateWorkflowMutation, useTransitionMutation,
+  usePendingApprovalsForRecordQuery,
 } = api;

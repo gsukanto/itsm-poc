@@ -1,6 +1,7 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WorkflowsService } from '../workflows/workflows.service';
 
 export interface ApprovalStepDef {
   approverId?: string;
@@ -10,7 +11,11 @@ export interface ApprovalStepDef {
 
 @Injectable()
 export class ApprovalsService {
-  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+    @Inject(forwardRef(() => WorkflowsService)) private workflows: WorkflowsService,
+  ) {}
 
   async createChain(entityType: string, entityId: string, steps: ApprovalStepDef[]) {
     if (!steps || steps.length === 0) return [];
@@ -56,6 +61,13 @@ export class ApprovalsService {
       data: { status: decision, comment, decidedAt: new Date(), approverId: actorId },
     });
     if (decision === 'approved') {
+      // If this approval was created by a workflow transition, complete it now.
+      if (ap.metadata && ap.metadata.includes('pendingTransition')) {
+        try { await this.workflows.completeApprovedTransition(id); } catch (e: any) {
+          // log but don't fail the approval — admin can manually fix the record
+          console.error('completeApprovedTransition failed', e?.message);
+        }
+      }
       await this.notifyCurrentApprover(ap.entityType, ap.entityId);
     }
     return updated;

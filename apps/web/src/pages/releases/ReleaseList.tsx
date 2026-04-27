@@ -3,6 +3,7 @@ import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, St
 import { GridColDef } from '@mui/x-data-grid';
 import { useCreateReleaseMutation, useReleasesQuery } from '../../services/api';
 import { ListGrid, PageHeader } from '../../components/PageBits';
+import { ModuleViews } from '../../components/ModuleViews';
 import { StatusChip } from '../../components/StatusChip';
 
 export function ReleaseList() {
@@ -21,7 +22,7 @@ export function ReleaseList() {
   return (
     <>
       <PageHeader title="Releases" action={<Button variant="contained" onClick={() => setOpen(true)}>New Release</Button>} />
-      <ListGrid rows={data} columns={cols} loading={isFetching} linkTo={(r) => `/releases/${r.id}`} />
+      <ModuleViews module="release" rows={data as any[]} columns={cols} loading={isFetching} linkTo={(r) => `/releases/${r.id}`} />
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>New Release</DialogTitle>
         <DialogContent>

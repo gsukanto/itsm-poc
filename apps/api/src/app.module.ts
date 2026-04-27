@@ -13,6 +13,7 @@ import { CounterModule } from './common/counter.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ApprovalsModule } from './approvals/approvals.module';
+import { WorkflowsModule } from './workflows/workflows.module';
 import { SlaModule } from './sla/sla.module';
 import { UsersModule } from './users/users.module';
 import { GroupsModule } from './groups/groups.module';
@@ -49,6 +50,7 @@ import { HealthController } from './health.controller';
     AttachmentsModule,
     NotificationsModule,
     ApprovalsModule,
+    WorkflowsModule,
     SlaModule,
     IncidentsModule,
     ServiceRequestsModule,

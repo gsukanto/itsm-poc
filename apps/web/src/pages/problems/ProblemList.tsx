@@ -4,6 +4,7 @@ import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, St
 import { GridColDef } from '@mui/x-data-grid';
 import { useCreateProblemMutation, useProblemsQuery } from '../../services/api';
 import { ListGrid, PageHeader } from '../../components/PageBits';
+import { ModuleViews } from '../../components/ModuleViews';
 import { StatusChip } from '../../components/StatusChip';
 
 export function ProblemList() {
@@ -22,7 +23,7 @@ export function ProblemList() {
   return (
     <>
       <PageHeader title="Problems" action={<Button variant="contained" onClick={() => setOpen(true)}>New Problem</Button>} />
-      <ListGrid rows={data} columns={cols} loading={isFetching} linkTo={(r) => `/problems/${r.id}`} />
+      <ModuleViews module="problem" rows={data as any[]} columns={cols} loading={isFetching} linkTo={(r) => `/problems/${r.id}`} />
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>New Problem</DialogTitle>
         <DialogContent>

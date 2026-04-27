@@ -45,6 +45,9 @@ const groups: { header: string; items: { to: string; label: string; icon: React.
     { to: '/suppliers', label: 'Suppliers', icon: <Business /> },
     { to: '/financial', label: 'Financial', icon: <AttachMoney /> },
   ]},
+  { header: 'Admin', items: [
+    { to: '/admin/workflows', label: 'Workflows', icon: <Build /> },
+  ]},
 ];
 
 export function Shell() {

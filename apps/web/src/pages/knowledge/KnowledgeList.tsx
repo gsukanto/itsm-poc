@@ -4,6 +4,7 @@ import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextF
 import { GridColDef } from '@mui/x-data-grid';
 import { useCreateKbArticleMutation, useKbArticlesQuery } from '../../services/api';
 import { ListGrid, PageHeader } from '../../components/PageBits';
+import { ModuleViews } from '../../components/ModuleViews';
 import { StatusChip } from '../../components/StatusChip';
 
 export function KnowledgeList() {
@@ -21,7 +22,7 @@ export function KnowledgeList() {
   return (
     <>
       <PageHeader title="Knowledge Base" action={<Button variant="contained" onClick={() => setOpen(true)}>New Article</Button>} />
-      <ListGrid rows={data} columns={cols} loading={isFetching} linkTo={(r) => `/knowledge/${r.id}`} />
+      <ModuleViews module="knowledge" rows={data as any[]} columns={cols} loading={isFetching} linkTo={(r) => `/knowledge/${r.id}`} />
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="md">
         <DialogTitle>New KB Article</DialogTitle>
         <DialogContent>
